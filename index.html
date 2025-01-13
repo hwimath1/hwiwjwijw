@@ -1,0 +1,1031 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <title>복소수의 사칙연산</title>
+  <!-- MathJax 라이브러리 -->
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" defer></script>
+  <style>
+    body {
+      margin: 0; 
+      padding: 0;
+      font-family: sans-serif;
+      background: #f5f5f5;
+    }
+    .container {
+      width: 90%;
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 20px;
+      background: white;
+      box-shadow: 0 0 10px rgba(0,0,0,0.2);
+    }
+    h1, h2, h3 {
+      text-align: center;
+      margin: 10px 0;
+    }
+    .centered {
+      text-align: center;
+      margin: 10px;
+    }
+    .difficulty-select {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 10px;
+    }
+    .difficulty-select button {
+      margin: 0 10px;
+      padding: 10px 20px;
+      font-size: 15px;
+      cursor: pointer;
+    }
+    .energy-bar {
+      height: 20px;
+      background-color: #76c7c0;
+      width: 100%;
+      transition: width 0.3s;
+      border-radius: 5px;
+    }
+    #energyBarWrapper {
+      background-color: #ddd;
+      width: 100%;
+      height: 20px;
+      border-radius: 5px;
+      overflow: hidden;
+      margin-bottom: 10px;
+      display: none; /* 처음엔 안 보이게 */
+    }
+    .choice-button {
+      width: 100%;
+      margin: 5px 0;
+      background-color: #fff;
+      border: 2px solid #ccc;
+      font-size: 16px;
+      text-align: left;
+      padding: 8px;
+      cursor: pointer;
+      transition: background-color 0.2s, border-color 0.2s;
+    }
+    .choice-button:hover {
+      background-color: #f7f7f7;
+      border-color: #999;
+    }
+    #nameInput {
+      display: block;
+      margin: 10px auto;
+      font-size: 16px;
+      padding: 5px;
+    }
+    .hidden {
+      display: none;
+    }
+    .highlight {
+      background-color: #ffffcc;
+    }
+    .danger {
+      color: red;
+      font-weight: bold;
+    }
+    .score-board {
+      text-align: center;
+      margin-top: 10px;
+      font-size: 18px;
+    }
+    #response {
+      white-space: pre-wrap;
+      background-color: #f7f7f7;
+      padding: 10px;
+      margin-top: 10px;
+      border: 1px solid #ddd;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>복소수의 사칙연산</h1>
+    <div id="welcomeScreen">
+      <h3>이름을 입력해주세요</h3>
+      <input id="nameInput" type="text" placeholder="이름" />
+      <h3>난이도를 선택해주세요</h3>
+      <div class="difficulty-select">
+        <button onclick="startGame('최상')">최상</button>
+        <button onclick="startGame('상')">상</button>
+        <button onclick="startGame('중')">중</button>
+        <button onclick="startGame('하')">하</button>
+      </div>
+    </div>
+
+    <div id="quizScreen" class="hidden">
+      <div id="energyBarWrapper">
+        <div id="energyBar" class="energy-bar"></div>
+      </div>
+      <div class="score-board">
+        <span id="timeDisplay"></span> &nbsp;|&nbsp;
+        <span>남은 기회: <span id="lifeDisplay">3</span></span> &nbsp;|&nbsp;
+        <span>점수: <span id="scoreDisplay">0</span></span> &nbsp;|&nbsp;
+        <span>전체 경과 시간: <span id="totalTimeDisplay">0</span>s</span>
+      </div>
+      <div id="questionArea" class="centered">
+        <!-- 문제/보기가 표시될 영역 -->
+      </div>
+    </div>
+
+    <div id="endScreen" class="hidden">
+      <h2 id="endTitle"></h2>
+      <h3>최종 점수: <span id="finalScore">0</span></h3>
+      <div>
+        <button onclick="sendScore()">점수 전송</button>
+      </div>
+      <div id="response"></div>
+    </div>
+  </div>
+
+  <script>
+    // 데이터 전송 함수
+    async function saveData(game, name, score, elapsedTime) {
+        const FUNCTION_URL = "https://us-central1-record-f420d.cloudfunctions.net/report";
+
+        const requestData = {
+            game,
+            name,
+            score: parseInt(score, 10),
+            elapsedTime: parseInt(elapsedTime, 10)
+        };
+
+        try {
+            const response = await fetch(FUNCTION_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(requestData)
+            });
+
+            const responseData = await response.json();
+
+            if (response.ok) {
+                document.getElementById('response').innerText = 
+                    `성공: ${JSON.stringify(responseData, null, 2)}`;
+            } else {
+                document.getElementById('response').innerText = 
+                    `오류: ${JSON.stringify(responseData, null, 2)}`;
+            }
+        } catch (error) {
+            console.error('요청 실패:', error);
+            document.getElementById('response').innerText = 
+                `네트워크 오류: ${error.message}`;
+        }
+    }
+
+    // 문제, 보기, 정답 데이터 (모두 무작위로 뽑기 위해 배열에 넣음)
+    // 문제 번호 표시는 하지 않기로 했으므로, questionText에서 문제 번호를 제거
+    // (조건/지시문 포함, 보기/답은 원문 그대로, 단, <=, >= 은 수식 형태로 치환)
+    // 부등호가 없는 문제들은 그대로 둡니다.
+
+    const allQuestions = [
+      // 1~18
+      {
+        questionText: "\\((4 - i) + (-8 + 2i)\\) 를 \\(a+bi\\)꼴로 나타내어라.",
+        options: [
+          "\\(-4 - i\\)",
+          "\\(-4 + i\\)",
+          "\\(2 + 3i\\)",
+          "\\(-6 + 4i\\)"
+        ],
+        correct: 1
+      },
+      {
+        questionText: "\\((3 + 4i) + (2 - 2i)\\) 를 \\(a+bi\\)꼴로 나타내어라.",
+        options: [
+          "\\(3 + 6i\\)",
+          "\\(5 + 2i\\)",
+          "\\(1 + 2i\\)",
+          "\\(5 - 6i\\)"
+        ],
+        correct: 1
+      },
+      {
+        questionText: "\\((2 - 3i) + (2 + i)\\) 를 \\(a+bi\\)꼴로 나타내어라.",
+        options: [
+          "\\(0 - 2i\\)",
+          "\\(3 - i\\)",
+          "\\(4 - 2i\\)",
+          "\\(1 + 4i\\)"
+        ],
+        correct: 2
+      },
+      {
+        questionText: "\\((-1 + 3i) + (4 - 2i)\\) 를 \\(a+bi\\)꼴로 나타내어라.",
+        options: [
+          "\\(3 + i\\)",
+          "\\(-5 + 5i\\)",
+          "\\(3 + 5i\\)",
+          "\\(5 + i\\)"
+        ],
+        correct: 0
+      },
+      {
+        questionText: "\\((1 + 2i) + (2 + i)\\) 를 \\(a+bi\\)꼴로 나타내어라.",
+        options: [
+          "\\(4 + 3i\\)",
+          "\\(3 + 3i\\)",
+          "\\(3 + i\\)",
+          "\\(1 + 4i\\)"
+        ],
+        correct: 1
+      },
+      {
+        questionText: "\\((11 + 3i) + (4 + i)\\) 를 \\(a+bi\\)꼴로 나타내어라.",
+        options: [
+          "\\(15 - 4i\\)",
+          "\\(7 + 4i\\)",
+          "\\(15 + 4i\\)",
+          "\\(11 + 2i\\)"
+        ],
+        correct: 2
+      },
+      {
+        questionText: "\\((2 - 7i) - (5i - 11)\\) 를 \\(a+bi\\)꼴로 나타내어라.",
+        options: [
+          "\\(-9 - 2i\\)",
+          "\\(13 - 12i\\)",
+          "\\(13 - 2i\\)",
+          "\\(-9 - 12i\\)"
+        ],
+        correct: 1
+      },
+      {
+        questionText: "\\((5 + 2i) + 4(5 + 3i)\\) 를 \\(a+bi\\)꼴로 나타내어라.",
+        options: [
+          "\\(5 + 14i\\)",
+          "\\(25 + 20i\\)",
+          "\\(25 + 14i\\)",
+          "\\(20 + 17i\\)"
+        ],
+        correct: 2
+      },
+      {
+        questionText: "\\((3 - 2i) - (-1 + 2i)\\) 를 \\(a+bi\\)꼴로 나타내어라.",
+        options: [
+          "\\(4 - 4i\\)",
+          "\\(2 - 6i\\)",
+          "\\(2 + 4i\\)",
+          "\\(3 + 0i\\)"
+        ],
+        correct: 0
+      },
+      {
+        questionText: "\\((3 + 5i) - (7i - 1)\\) 를 \\(a+bi\\)꼴로 나타내어라.",
+        options: [
+          "\\(4 - 2i\\)",
+          "\\(3 - 12i\\)",
+          "\\(2 + 6i\\)",
+          "\\(4 - 6i\\)"
+        ],
+        correct: 0
+      },
+      {
+        questionText: "\\((1 + 3i) - (2i - 2)\\) 를 \\(a+bi\\)꼴로 나타내어라.",
+        options: [
+          "\\(-1 + i\\)",
+          "\\(3 + i\\)",
+          "\\(-1 + 5i\\)",
+          "\\(1 + 5i\\)"
+        ],
+        correct: 1
+      },
+      {
+        questionText: "\\((-7 - 2i) - (8 - 2i)\\) 를 \\(a+bi\\)꼴로 나타내어라.",
+        options: [
+          "\\(-7 + 0i\\)",
+          "\\(-15 + 4i\\)",
+          "\\(-15\\)",
+          "\\(-1 - 4i\\)"
+        ],
+        correct: 2
+      },
+      {
+        questionText: "\\((7 - 2i) - (i - 5)\\) 를 \\(a+bi\\)꼴로 나타내어라.",
+        options: [
+          "\\(12 - 2i\\)",
+          "\\(2 - 3i\\)",
+          "\\(13 - 3i\\)",
+          "\\(12 - 3i\\)"
+        ],
+        correct: 3
+      },
+      {
+        questionText: "\\((11 + 3i) - (7 - 4i) + 2i\\) 를 \\(a+bi\\)꼴로 나타내어라.",
+        options: [
+          "\\(4 + 5i\\)",
+          "\\(4 + 9i\\)",
+          "\\(18 - 5i\\)",
+          "\\(-4 + 9i\\)"
+        ],
+        correct: 1
+      },
+      {
+        questionText: "\\((-9i + 8) + (8i - 5)\\) 를 \\(a+bi\\)꼴로 나타내어라.",
+        options: [
+          "\\(3 + i\\)",
+          "\\(3 - i\\)",
+          "\\(13 - i\\)",
+          "\\(8 - 9i\\)"
+        ],
+        correct: 1
+      },
+      {
+        questionText: "\\((3 + 4i) + (3 - 4i)\\) 를 \\(a+bi\\)꼴로 나타내어라.",
+        options: [
+          "\\(0 + 0i\\)",
+          "\\(6i\\)",
+          "\\(6\\)",
+          "\\(3 - 8i\\)"
+        ],
+        correct: 2
+      },
+      {
+        questionText: "\\((-3 + 4i) - (-2i - 5)\\) 를 \\(a+bi\\)꼴로 나타내어라.",
+        options: [
+          "\\(-3 + 2i\\)",
+          "\\(-8 + 2i\\)",
+          "\\(2 + 6i\\)",
+          "\\(2 + 4i\\)"
+        ],
+        correct: 2
+      },
+      {
+        questionText: "\\((-1 - i) + (-4 - 7i)\\) 를 \\(a+bi\\)꼴로 나타내어라.",
+        options: [
+          "\\(-5 - 6i\\)",
+          "\\(-3 - 8i\\)",
+          "\\(-5 - 8i\\)",
+          "\\(-5 + 8i\\)"
+        ],
+        correct: 2
+      },
+      // 28~38
+      {
+        questionText: "\\((2 + \\sqrt{3} i)^2\\) 를 \\(a+bi\\)꼴로 나타내어라.",
+        options: [
+          "\\(1 + 4\\sqrt{3} i\\)",
+          "\\(4 + \\sqrt{3} i\\)",
+          "\\(5 + 2\\sqrt{3} i\\)",
+          "\\(-1 + 4\\sqrt{3} i\\)"
+        ],
+        correct: 0
+      },
+      {
+        questionText: "\\((-\\sqrt{2} i)^2\\) 를 \\(a+bi\\)꼴로 나타내어라.",
+        options: [
+          "\\(\\sqrt{2}\\)",
+          "\\(-2\\)",
+          "\\(-\\sqrt{2} i\\)",
+          "\\(2i\\)"
+        ],
+        correct: 1
+      },
+      {
+        questionText: "\\((2 + i)^2\\) 를 \\(a+bi\\)꼴로 나타내어라.",
+        options: [
+          "\\(3 + 4i\\)",
+          "\\(4 + 3i\\)",
+          "\\(2 + 4i\\)",
+          "\\(3 + 2i\\)"
+        ],
+        correct: 0
+      },
+      {
+        questionText: "\\((2 + 3i)(3 - 4i)\\) 를 \\(a+bi\\)꼴로 나타내어라.",
+        options: [
+          "\\(18 + i\\)",
+          "\\(6 + 9i\\)",
+          "\\(12 + 5i\\)",
+          "\\(18 - i\\)"
+        ],
+        correct: 0
+      },
+      {
+        questionText: "\\((-1 - i)(1 - i)\\) 를 \\(a+bi\\)꼴로 나타내어라.",
+        options: [
+          "\\(-2\\)",
+          "\\(-2i\\)",
+          "\\(-1 - 2i\\)",
+          "\\(2 - i\\)"
+        ],
+        correct: 0
+      },
+      {
+        questionText: "\\((1 + i)(1 - i)\\) 를 \\(a+bi\\)꼴로 나타내어라.",
+        options: [
+          "\\(-1 + i\\)",
+          "\\(2\\)",
+          "\\(1 - i^2\\)",
+          "\\(0\\)"
+        ],
+        correct: 1
+      },
+      {
+        questionText: "\\((3 + 6i)(5 - 4i)\\) 를 \\(a+bi\\)꼴로 나타내어라.",
+        options: [
+          "\\(39 + 10i\\)",
+          "\\(39 + 18i\\)",
+          "\\(23 + 18i\\)",
+          "\\(15 + 24i\\)"
+        ],
+        correct: 1
+      },
+      {
+        questionText: "\\((1 - \\sqrt{3} i)^2\\) 를 \\(a+bi\\)꼴로 나타내어라.",
+        options: [
+          "\\(-2 + 2\\sqrt{3} i\\)",
+          "\\(-2 - 2\\sqrt{3} i\\)",
+          "\\(-1 - \\sqrt{3} i\\)",
+          "\\(1 + 2\\sqrt{3} i\\)"
+        ],
+        correct: 1
+      },
+      {
+        questionText: "\\((3 + i)^2\\) 를 \\(a+bi\\)꼴로 나타내어라.",
+        options: [
+          "\\(8 + 2i\\)",
+          "\\(8 - 6i\\)",
+          "\\(8 + 6i\\)",
+          "\\(9 + i\\)"
+        ],
+        correct: 2
+      },
+      {
+        questionText: "\\((2 + 3i)^2\\) 를 \\(a+bi\\)꼴로 나타내어라.",
+        options: [
+          "\\(-5 + 12i\\)",
+          "\\(4 + 12i\\)",
+          "\\(-5 + 9i\\)",
+          "\\(4 + 9i\\)"
+        ],
+        correct: 0
+      },
+      {
+        questionText: "\\((1 - i)^2\\) 를 \\(a+bi\\)꼴로 나타내어라.",
+        options: [
+          "\\(-1 - 2i\\)",
+          "\\(1 - 2i\\)",
+          "\\(-2i\\)",
+          "\\(-2 + i\\)"
+        ],
+        correct: 2
+      },
+      // 43~50
+      {
+        questionText: "\\((2 - 3i)(1 + 2i)\\) 를 \\(a+bi\\)꼴로 나타내어라.",
+        options: [
+          "\\(8 + 2i\\)",
+          "\\(8 + i\\)",
+          "\\(6 - 5i\\)",
+          "\\(7 + i\\)"
+        ],
+        correct: 1
+      },
+      {
+        questionText: "\\((-2 + 7i)(1 - i)\\) 를 \\(a+bi\\)꼴로 나타내어라.",
+        options: [
+          "\\(5 + 9i\\)",
+          "\\(-1 + 7i\\)",
+          "\\(5 - 7i\\)",
+          "\\(-1 + 9i\\)"
+        ],
+        correct: 0
+      },
+      {
+        questionText: "\\(2i(-4 - 3i)\\) 를 \\(a+bi\\)꼴로 나타내어라.",
+        options: [
+          "\\(6 - 8i\\)",
+          "\\(-6 - 8i\\)",
+          "\\(6 + 8i\\)",
+          "\\(-6 + 8i\\)"
+        ],
+        correct: 0
+      },
+      {
+        questionText: "\\((1 + 2i)(3 - i)\\) 를 \\(a+bi\\)꼴로 나타내어라.",
+        options: [
+          "\\(4 + 3i\\)",
+          "\\(5 + 5i\\)",
+          "\\(3 + 5i\\)",
+          "\\(5 - i\\)"
+        ],
+        correct: 1
+      },
+      {
+        questionText: "\\((1 + 2i)(2 - i)\\) 를 \\(a+bi\\)꼴로 나타내어라.",
+        options: [
+          "\\(4 + 3i\\)",
+          "\\(4 - 3i\\)",
+          "\\(2 + 5i\\)",
+          "\\(3 + 4i\\)"
+        ],
+        correct: 0
+      },
+      {
+        questionText: "\\((5 + 6i)(5 - 6i)\\) 를 \\(a+bi\\)꼴로 나타내어라.",
+        options: [
+          "\\(61\\)",
+          "\\(0\\)",
+          "\\(25 - 36i\\)",
+          "\\(25 + 36i\\)"
+        ],
+        correct: 0
+      },
+      {
+        questionText: "\\((1 + i)(2 + 3i)\\) 를 \\(a+bi\\)꼴로 나타내어라.",
+        options: [
+          "\\(-1 + 5i\\)",
+          "\\(2 + 5i\\)",
+          "\\(-3 + 3i\\)",
+          "\\(-1 - 2i\\)"
+        ],
+        correct: 0
+      },
+      {
+        questionText: "\\((1 + 2i)(2 - 3i)\\) 를 \\(a+bi\\)꼴로 나타내어라.",
+        options: [
+          "\\(8 + 3i\\)",
+          "\\(8 - i\\)",
+          "\\(2 - 3i\\)",
+          "\\(8 + i\\)"
+        ],
+        correct: 3
+      },
+      // 55~61
+      {
+        questionText: "\\(\\dfrac{5i}{3 + i}\\) 를 \\(a+bi\\)꼴로 나타내어라.",
+        options: [
+          "\\(\\dfrac{1}{2} + \\dfrac{3}{2} i\\)",
+          "\\(\\dfrac{1}{2} + i\\)",
+          "\\(\\dfrac{3}{5} + \\dfrac{1}{5} i\\)",
+          "\\(-1 + 3i\\)"
+        ],
+        correct: 0
+      },
+      {
+        questionText: "\\(\\dfrac{1 - i}{1 - 2i}\\) 를 \\(a+bi\\)꼴로 나타내어라.",
+        options: [
+          "\\(\\dfrac{3}{5} + \\dfrac{1}{5} i\\)",
+          "\\(\\dfrac{1}{2} + \\dfrac{3}{2} i\\)",
+          "\\(\\dfrac{2}{5} + \\dfrac{2}{5} i\\)",
+          "\\(\\dfrac{3}{5} - \\dfrac{1}{5} i\\)"
+        ],
+        correct: 0
+      },
+      {
+        questionText: "\\(\\dfrac{2 - i}{1 + i}\\) 를 \\(a+bi\\)꼴로 나타내어라.",
+        options: [
+          "\\(\\dfrac{1}{2} + \\dfrac{3}{2} i\\)",
+          "\\(\\dfrac{1}{2} - \\dfrac{3}{2} i\\)",
+          "\\(\\dfrac{3}{5} + \\dfrac{1}{5} i\\)",
+          "\\(-1 + 2i\\)"
+        ],
+        correct: 1
+      },
+      {
+        questionText: "\\(\\dfrac{1 + 2i}{1 - i}\\) 를 \\(a+bi\\)꼴로 나타내어라.",
+        options: [
+          "\\(\\dfrac{1}{2} + \\dfrac{3}{2} i\\)",
+          "\\(\\dfrac{3}{5} + \\dfrac{1}{5} i\\)",
+          "\\(\\dfrac{1}{5} + \\dfrac{3}{5} i\\)",
+          "\\(\\dfrac{1}{2} - \\dfrac{3}{2} i\\)"
+        ],
+        correct: 0
+      },
+      {
+        questionText: "\\(\\dfrac{1 + 3i}{1 - i}\\) 를 \\(a+bi\\)꼴로 나타내어라.",
+        options: [
+          "\\(-1 + 2i\\)",
+          "\\(\\dfrac{1}{5} + \\dfrac{3}{5} i\\)",
+          "\\(\\dfrac{3}{5} + \\dfrac{1}{5} i\\)",
+          "\\(\\dfrac{1}{2} - \\dfrac{3}{2} i\\)"
+        ],
+        correct: 0
+      },
+      {
+        questionText: "\\(\\dfrac{9i}{1 - 4i}\\) 를 \\(a+bi\\)꼴로 나타내어라.",
+        options: [
+          "\\(\\dfrac{1}{2} + \\dfrac{3}{2} i\\)",
+          "\\(\\dfrac{36}{17} + \\dfrac{9}{17} i\\)",
+          "\\(\\dfrac{3}{5} + \\dfrac{1}{5} i\\)",
+          "\\(-1 + 2i\\)"
+        ],
+        correct: 1
+      },
+      {
+        questionText: "\\(\\dfrac{1 + i}{2 - i}\\) 를 \\(a+bi\\)꼴로 나타내어라.",
+        options: [
+          "\\(-1 + 2i\\)",
+          "\\(\\dfrac{1}{2} - \\dfrac{3}{2} i\\)",
+          "\\(\\dfrac{1}{5} + \\dfrac{3}{5} i\\)",
+          "\\(\\dfrac{36}{17} + \\dfrac{9}{17} i\\)"
+        ],
+        correct: 2
+      },
+      // 73~78
+      {
+        questionText: "다음을 계산하여라. \\((5+2i) + \\dfrac{1 - i}{1 + i}\\)",
+        options: [
+          "\\(5 - i\\)",
+          "\\(4 + 2i\\)",
+          "\\(5 + i\\)",
+          "\\(6 + i\\)"
+        ],
+        correct: 2
+      },
+      {
+        questionText: "다음을 계산하여라. \\(\\dfrac{2}{1 - i} + \\dfrac{1 - i}{1 + i}\\)",
+        options: [
+          "\\(2\\)",
+          "\\(1\\)",
+          "\\(1 + i\\)",
+          "\\(-1 + i\\)"
+        ],
+        correct: 1
+      },
+      {
+        questionText: "다음을 계산하여라. \\(3i - \\{-2i + 2(9i - 8)\\}\\)",
+        options: [
+          "\\(16 + 13i\\)",
+          "\\(16 - 13i\\)",
+          "\\(-16 + 13i\\)",
+          "\\(16 - 15i\\)"
+        ],
+        correct: 1
+      },
+      {
+        questionText: "다음을 계산하여라. \\((4 - i)(3 - 2i) + (4 - i)(3 + 2i)\\)",
+        options: [
+          "\\(24 + 6i\\)",
+          "\\(24 - 6i\\)",
+          "\\(26 - 8i\\)",
+          "\\(22 - 6i\\)"
+        ],
+        correct: 1
+      },
+      {
+        questionText: "다음을 계산하여라. \\((4 + 2i) \\times (1 - 2i) \\div (3 - 4i)\\)",
+        options: [
+          "\\(\\dfrac{48}{25} + \\dfrac{14}{25} i\\)",
+          "\\(\\dfrac{14}{25} + \\dfrac{48}{25} i\\)",
+          "\\(2 + 14i\\)",
+          "\\(48 + 14i\\)"
+        ],
+        correct: 0
+      },
+      {
+        questionText: "다음을 계산하여라. \\((3 + 4i)\\bigl(\\dfrac{3 + i}{1 + i}\\bigr) + (-1 - 3i)\\bigl(\\dfrac{3 + i}{1 + i}\\bigr)\\)",
+        options: [
+          "\\(5\\)",
+          "\\(4 - 2i\\)",
+          "\\(6\\)",
+          "\\(2 + i\\)"
+        ],
+        correct: 0
+      },
+      // 82~87
+      {
+        questionText: "다음 등식을 만족하는 실수 \\(x,y\\)의 값을 구하여라. \\((2 + i)^2 x + (2 - i)^2 y = 9 + 4i\\)",
+        options: [
+          "\\((x,y) = (2,2)\\)",
+          "\\((x,y) = (2,1)\\)",
+          "\\((x,y) = (1,1)\\)",
+          "\\((x,y) = (3,-4)\\)"
+        ],
+        correct: 1
+      },
+      {
+        questionText: "다음 등식을 만족하는 실수 \\(x,y\\)의 값을 구하여라. \\((x + 2i)(3 - i) = 8 + yi\\)",
+        options: [
+          "\\((x,y) = (3,3)\\)",
+          "\\((x,y) = (2,4)\\)",
+          "\\((x,y) = (1,1)\\)",
+          "\\((x,y) = (2,3)\\)"
+        ],
+        correct: 1
+      },
+      {
+        questionText: "다음 등식을 만족하는 실수 \\(x,y\\)의 값을 구하여라. \\((3 - 2i)(x + yi) = 13\\)",
+        options: [
+          "\\((x,y) = (3,2)\\)",
+          "\\((x,y) = (4,2)\\)",
+          "\\((x,y) = (3,4)\\)",
+          "\\((x,y) = (2,3)\\)"
+        ],
+        correct: 0
+      },
+      {
+        questionText: "다음 등식을 만족하는 실수 \\(x,y\\)의 값을 구하여라. \\((2 + i)(x - yi) = -3 + i\\)",
+        options: [
+          "\\((x,y) = (-1,-2)\\)",
+          "\\((x,y) = (-1,-1)\\)",
+          "\\((x,y) = (1,1)\\)",
+          "\\((x,y) = (2,-1)\\)"
+        ],
+        correct: 1
+      },
+      {
+        questionText: "다음 등식을 만족하는 실수 \\(x,y\\)의 값을 구하여라. \\((1 - 2i)(x - yi) = \\sqrt{3} - 4i\\)",
+        options: [
+          "\\((x,y) = (-1,-2)\\)",
+          "\\((x,y) = (1,-2)\\)",
+          "\\((x,y) = (-1,1)\\)",
+          "\\((x,y) = (3,2)\\)"
+        ],
+        correct: 0
+      },
+      {
+        questionText: "다음 등식을 만족하는 실수 \\(x,y\\)의 값을 구하여라. \\(\\dfrac{x}{1 - i} + \\dfrac{y}{1 + i} = 2 - i\\)",
+        options: [
+          "\\((x,y) = (1,3)\\)",
+          "\\((x,y) = (2,3)\\)",
+          "\\((x,y) = (3,1)\\)",
+          "\\((x,y) = (0,3)\\)"
+        ],
+        correct: 0
+      },
+      // 91~95
+      {
+        questionText: "두 실수 \\(a, b\\)에 대하여 \\(\\dfrac{a + i}{1 - i} = 1 - b i\\) 가 성립할 때, \\(a + b\\)의 값을 구하여라.",
+        options: [
+          "\\(2\\)",
+          "\\(3\\)",
+          "\\(5\\)",
+          "\\(7\\)"
+        ],
+        correct: 2
+      },
+      {
+        questionText: "정수 \\(a, b\\)에 대하여 \\((2 - a i)(1 + i) = -1 + b i\\) 를 만족할 때, \\(a + b\\)의 값을 구하여라.",
+        options: [
+          "\\(-1\\)",
+          "\\(0\\)",
+          "\\(2\\)",
+          "\\(4\\)"
+        ],
+        correct: 2
+      },
+      {
+        questionText: "복소수 \\(z = 1 + 2i\\)일 때 \\(z + \\dfrac{10}{z}\\) 를 간단히 하여라.",
+        options: [
+          "\\(3 - 2i\\)",
+          "\\(-3 + 2i\\)",
+          "\\(2 + 3i\\)",
+          "\\(3 + 2i\\)"
+        ],
+        correct: 0
+      },
+      {
+        questionText: "\\(\\dfrac{x}{1 + i} + \\dfrac{y}{1 - i} = 2\\) 를 만족하는 실수 \\(x, y\\)에 대하여 \\(x + y\\)의 값을 구하여라.",
+        options: [
+          "\\(2\\)",
+          "\\(4\\)",
+          "\\(0\\)",
+          "\\(1\\)"
+        ],
+        correct: 1
+      },
+      {
+        questionText: "등식 \\((x + 2i)(1 - i) = 5 + y i\\) 를 만족시키는 실수 \\(x, y\\)에 대하여 \\(x - y\\)의 값을 구하여라. \\(i=\\sqrt{-1}\\)",
+        options: [
+          "\\(2\\)",
+          "\\(3\\)",
+          "\\(4\\)",
+          "\\(5\\)"
+        ],
+        correct: 2
+      }
+    ];
+
+    // 문제를 무작위로 섞기 위해 인덱스 배열을 섞는 함수
+    function shuffleArray(array) {
+      for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
+      }
+      return array;
+    }
+
+    let nameValue = "";
+    let difficulty = "";
+    let questionsOrder = [];      // 문제 인덱스를 담을 배열
+    let currentQuestionIndex = 0; // 현재 문제 순번(섞인 배열에서의 인덱스)
+    let score = 0;
+    let lives = 3;
+    let timeLeft = 0;            // 현재 문제 시간
+    let totalTime = 0;           // 전체 경과 시간(초)
+    let timerInterval = null;    // setInterval용
+    let totalTimeInterval = null;
+    let gameInProgress = false;
+
+    // 난이도별 최초 타이머 설정
+    // 최상: 25초, 상: 35초, 중: 45초, 하: 제한없음(표시는 하지만 줄지 않게)
+    // 점수: 최상=20, 상=15, 중=13, 하=10
+    let baseTime = 0;
+    let difficultyScore = 10;
+
+    function startGame(diff) {
+      nameValue = document.getElementById("nameInput").value.trim();
+      if (!nameValue) {
+        alert("이름을 입력해주세요!");
+        return;
+      }
+
+      difficulty = diff;
+      switch (diff) {
+        case "최상":
+          baseTime = 25; 
+          difficultyScore = 20;
+          break;
+        case "상":
+          baseTime = 35;
+          difficultyScore = 15;
+          break;
+        case "중":
+          baseTime = 45;
+          difficultyScore = 13;
+          break;
+        case "하":
+          baseTime = 999999; // 사실상 제한 없다고 가정
+          difficultyScore = 10;
+          break;
+      }
+
+      // 첫 화면 숨기고 퀴즈화면 보이기
+      document.getElementById("welcomeScreen").classList.add("hidden");
+      document.getElementById("quizScreen").classList.remove("hidden");
+
+      // 문제 순서를 섞어서 모든 문제(61개) 사용
+      const indices = Array.from({length: allQuestions.length}, (_,i) => i);
+      shuffleArray(indices);
+      questionsOrder = indices;
+
+      currentQuestionIndex = 0;
+      score = 0;
+      lives = 3;
+      totalTime = 0;
+      document.getElementById("lifeDisplay").textContent = lives;
+      document.getElementById("scoreDisplay").textContent = score;
+
+      // 전체 경과 시간 표시용 인터벌
+      totalTimeInterval = setInterval(()=>{
+        if (gameInProgress) {
+          totalTime++;
+          document.getElementById("totalTimeDisplay").textContent = totalTime;
+        }
+      }, 1000);
+
+      gameInProgress = true;
+      loadQuestion();
+    }
+
+    // 문제 로딩
+    function loadQuestion() {
+      if (currentQuestionIndex >= questionsOrder.length) {
+        // 모든 문제 소진 -> 게임 끝
+        endGame("모든 문제를 풀었습니다!");
+        return;
+      }
+
+      // 시간 초기화
+      timeLeft = baseTime;
+      if (difficulty === "하") {
+        // 하 난이도는 시간 표시만, 줄지는 않게
+        timeLeft = 999999;
+      }
+
+      updateTimeDisplay();
+      document.getElementById("energyBarWrapper").style.display = 
+        (difficulty === "하") ? "none" : "block";
+      updateEnergyBar();
+
+      // 타이머 동작
+      if (timerInterval) clearInterval(timerInterval);
+      timerInterval = setInterval(() => {
+        if (!gameInProgress) return;
+        if (difficulty !== "하") {
+          timeLeft--;
+          updateEnergyBar();
+          if (timeLeft <= 0) {
+            // 시간 소진 -> 기회 -1, 문제강제종료
+            lives--;
+            if (lives <= 0) {
+              lives = 0;
+              document.getElementById("lifeDisplay").textContent = lives;
+              clearInterval(timerInterval);
+              endGame("시간 초과! 남은 기회가 없습니다.");
+              return;
+            } else {
+              document.getElementById("lifeDisplay").textContent = lives;
+              // 오답 처리처럼 정답 공개 후 다음 문제
+              alert("시간이 초과되었습니다. 기회가 1 감소합니다.");
+              // 정답 보여주기
+              const q = allQuestions[questionsOrder[currentQuestionIndex]];
+              const correctOpt = q.options[q.correct];
+              alert("정답: " + correctOpt);
+              // 다음 문제
+              currentQuestionIndex++;
+              loadQuestion();
+              return;
+            }
+          }
+        }
+        updateTimeDisplay();
+      }, 1000);
+
+      // 문제 표시
+      showQuestion();
+    }
+
+    function updateTimeDisplay() {
+      document.getElementById("timeDisplay").textContent = 
+        (difficulty === "하") ? "무제한" : `남은시간`;
+    }
+
+    function updateEnergyBar() {
+      const bar = document.getElementById("energyBar");
+      if (difficulty === "하") {
+        bar.style.width = "100%";
+      } else {
+        const ratio = (timeLeft / baseTime) * 100;
+        bar.style.width = ratio + "%";
+      }
+    }
+
+    function showQuestion() {
+      const questionObj = allQuestions[questionsOrder[currentQuestionIndex]];
+
+      // 보기 섞기? -> "보기 순서와 정답을 바꾸지 말고" 라는 요청이 있으므로 섞으면 안 됨.
+      // (다만, "답이 존재하지 않는 문제"는 없으므로 전부 사용.)
+      // 다만 '보기'의 순서는 이 문제에서 "원문 그대로" 유지해야 하므로 shuffle 안 함.
+
+      // DOM 구성
+      let html = `<div style="margin:20px auto; text-align:center; font-size:18px;">
+        <p>${questionObj.questionText}</p>
+      </div>`;
+
+      // 보기를 그대로 출력
+      questionObj.options.forEach((opt, index) => {
+        html += `<button class="choice-button" onclick="checkAnswer(${index})">
+                    ${opt}
+                 </button>`;
+      });
+
+      document.getElementById("questionArea").innerHTML = html;
+
+      // MathJax 렌더링
+      MathJax.typeset();
+    }
+
+    function checkAnswer(selectedIdx) {
+      const questionObj = allQuestions[questionsOrder[currentQuestionIndex]];
+      const correctIdx = questionObj.correct;
+
+      if (selectedIdx === correctIdx) {
+        // 맞췄다
+        score += difficultyScore;
+        document.getElementById("scoreDisplay").textContent = score;
+        alert("정답입니다! 점수 +" + difficultyScore);
+      } else {
+        // 틀림
+        lives--;
+        document.getElementById("lifeDisplay").textContent = lives;
+        alert("틀렸습니다.\n정답: " + questionObj.options[correctIdx]);
+        if (lives <= 0) {
+          endGame("기회를 모두 소진했습니다.");
+          return;
+        }
+      }
+
+      // 다음 문제
+      currentQuestionIndex++;
+      if (timerInterval) clearInterval(timerInterval);
+      // 에너지바 소진과 동일한 로직
+      loadQuestion();
+    }
+
+    function endGame(msg) {
+      gameInProgress = false;
+      if (timerInterval) clearInterval(timerInterval);
+      if (totalTimeInterval) clearInterval(totalTimeInterval);
+
+      // 퀴즈 화면 숨기고 endScreen 표시
+      document.getElementById("quizScreen").classList.add("hidden");
+      document.getElementById("endScreen").classList.remove("hidden");
+
+      document.getElementById("endTitle").textContent = msg;
+      document.getElementById("finalScore").textContent = score;
+    }
+
+    function sendScore() {
+      // 점수 전송
+      saveData("복소수의 사칙연산", nameValue, score, totalTime);
+    }
+  </script>
+</body>
+</html>
